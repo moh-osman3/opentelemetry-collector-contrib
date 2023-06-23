@@ -1,14 +1,9 @@
-package obfuscateprocessor
-
-import (
-	"go.opentelemetry.io/collector/config"
-)
+package obfuscationprocessor
 
 type Config struct {
-	config.ProcessorSettings `mapstructure:",squash"`
-
 	EncryptKey   string `mapstructure:"encrypt_key"`
 	EncryptRound int    `mapstructure:"encrypt_round"`
+	EncryptAll   bool   `mapstructure:"encrypt_all"`
 
 	EncryptAttributes []string `mapstructure:"encrypt_attributes"`
 }

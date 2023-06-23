@@ -1,12 +1,12 @@
-package obfuscateprocessor
+package obfuscationprocessor
 
 import (
 	"context"
 	"github.com/cyrildever/feistel"
 	"github.com/cyrildever/feistel/common/utils/hash"
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
@@ -19,35 +19,37 @@ const (
 	defaultRound = 10
 )
 
-// NewFactory creates a factory for the redaction processor.
-func NewFactory() component.ProcessorFactory {
-	return component.NewProcessorFactory(
+// NewFactory creates a factory for the obfuscation processor.
+func NewFactory() processor.Factory {
+	return processor.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		component.WithTracesProcessor(createTracesProcessor, stability),
+		processor.WithTraces(createTracesProcessor, stability),
 	)
 }
 
-func createDefaultConfig() config.Processor {
+func createDefaultConfig() component.Config { 
 	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewComponentID(typeStr)),
-		EncryptRound:      defaultRound,
+		EncryptRound: defaultRound,
+		// encrypt all string attributes by default
+		EncryptAll:   true,
 	}
 }
 
-// createTracesProcessor creates an instance of redaction for processing traces
+// createTracesProcessor creates an instance of obfuscation for processing traces
 func createTracesProcessor(
 	ctx context.Context,
-	set component.ProcessorCreateSettings,
-	cfg config.Processor,
+	set processor.CreateSettings,
+	cfg component.Config,
 	next consumer.Traces,
-) (component.TracesProcessor, error) {
+) (processor.Traces, error) {
 	oCfg := cfg.(*Config)
-	processor := &obfuscate{
+	processor := &obfuscation{
 		logger:            set.Logger,
 		next:              next,
 		encrypt:           feistel.NewFPECipher(hash.SHA_256, oCfg.EncryptKey, oCfg.EncryptRound),
 		encryptAttributes: makeEncryptList(oCfg),
+		encryptAll:        oCfg.EncryptAll,
 	}
 	return processorhelper.NewTracesProcessor(
 		ctx,
@@ -60,11 +62,14 @@ func createTracesProcessor(
 		processorhelper.WithShutdown(processor.Shutdown))
 }
 
-// makeEncryptList sets up a lookup table of  span attribute keys which need to be encrypted.
+// makeEncryptList sets up a lookup table of span attribute keys which need to be encrypted.
 func makeEncryptList(c *Config) map[string]struct{} {
 	allowList := make(map[string]struct{}, len(c.EncryptAttributes))
 	for _, key := range c.EncryptAttributes {
 		allowList[key] = struct{}{}
+	}
+	if len(allowList) > 0 {
+		c.EncryptAll = false
 	}
 	return allowList
 }

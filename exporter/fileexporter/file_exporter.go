@@ -92,6 +92,7 @@ type lineWriter struct {
 func NewLineWriter(cfg *Config, logger *zap.Logger, file io.WriteCloser) WriteCloseFlusher {
 	lw := &lineWriter{}
 	if cfg.Compression == "zstd" {
+		var err error
 		if cw, err := zstd.NewWriter(file); err == nil {
 			lw.file = cw
 			return lw
@@ -138,6 +139,7 @@ type fileWriter struct {
 func NewFileWriter(cfg *Config, logger *zap.Logger, file io.WriteCloser) WriteCloseFlusher {
 	fw := &fileWriter{}
 	if cfg.Compression == "zstd" {
+		var err error
 		if cw, err := zstd.NewWriter(file); err == nil {
 			fw.file = cw
 			return fw

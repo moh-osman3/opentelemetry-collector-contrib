@@ -1,4 +1,4 @@
-package obfuscateprocessor
+package obfuscationprocessor
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type obfuscate struct {
+type obfuscation struct {
 	// Logger
 	logger *zap.Logger
 	// Next trace consumer in line
@@ -18,11 +18,12 @@ type obfuscate struct {
 
 	encryptAttributes map[string]struct{}
 	encrypt           *feistel.FPECipher
+	encryptAll        bool
 }
 
 // processTraces implements ProcessMetricsFunc. It processes the incoming data
 // and returns the data to be sent to the next component
-func (o *obfuscate) processTraces(ctx context.Context, batch ptrace.Traces) (ptrace.Traces, error) {
+func (o *obfuscation) processTraces(ctx context.Context, batch ptrace.Traces) (ptrace.Traces, error) {
 	for i := 0; i < batch.ResourceSpans().Len(); i++ {
 		rs := batch.ResourceSpans().At(i)
 		o.processResourceSpan(ctx, rs)
@@ -31,7 +32,7 @@ func (o *obfuscate) processTraces(ctx context.Context, batch ptrace.Traces) (ptr
 }
 
 // processResourceSpan processes the ResourceSpans and all of its spans
-func (o *obfuscate) processResourceSpan(ctx context.Context, rs ptrace.ResourceSpans) {
+func (o *obfuscation) processResourceSpan(ctx context.Context, rs ptrace.ResourceSpans) {
 	rsAttrs := rs.Resource().Attributes()
 
 	// Attributes can be part of a resource span
@@ -49,18 +50,18 @@ func (o *obfuscate) processResourceSpan(ctx context.Context, rs ptrace.ResourceS
 	}
 }
 
-// processAttrs obfuscate the attributes of a resource span or a span
-func (o *obfuscate) processAttrs(_ context.Context, attributes pcommon.Map) {
+// processAttrs obfuscates the attributes of a resource span or a span
+func (o *obfuscation) processAttrs(_ context.Context, attributes pcommon.Map) {
 	attributes.Range(func(k string, value pcommon.Value) bool {
-		_, ok := o.encryptAttributes[k]
-		if !ok {
-			return true
+		if !o.encryptAll {
+			// check if in encryptList
+			_, ok := o.encryptAttributes[k]
+			if !ok {
+				return true
+			}
 		}
-		switch value.Type() {
-		case pcommon.ValueTypeInt:
-			encryptValue := o.encryptNumber(value.Int())
-			value.SetInt(encryptValue)
-		default:
+
+		if value.Type() == pcommon.ValueTypeStr {
 			encryptValue := o.encryptString(value.Str())
 			value.SetStr(encryptValue)
 		}
@@ -70,26 +71,21 @@ func (o *obfuscate) processAttrs(_ context.Context, attributes pcommon.Map) {
 }
 
 // Capabilities specifies what this processor does, such as whether it mutates data
-func (o *obfuscate) Capabilities() consumer.Capabilities {
+func (o *obfuscation) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
-// Start the redaction processor
-func (o *obfuscate) Start(_ context.Context, _ component.Host) error {
+// Start the obfuscation processor
+func (o *obfuscation) Start(_ context.Context, _ component.Host) error {
 	return nil
 }
 
-// Shutdown the redaction processor
-func (o *obfuscate) Shutdown(context.Context) error {
+// Shutdown the obfuscation processor
+func (o *obfuscation) Shutdown(context.Context) error {
 	return nil
 }
 
-func (o *obfuscate) encryptNumber(source int64) int64 {
-	obfuscated, _ := o.encrypt.EncryptNumber(uint64(source))
-	return int64(obfuscated.Uint64())
-}
-
-func (o *obfuscate) encryptString(source string) string {
+func (o *obfuscation) encryptString(source string) string {
 	obfuscated, _ := o.encrypt.Encrypt(source)
 	return obfuscated.String(true)
 }
